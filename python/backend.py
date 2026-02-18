@@ -30,6 +30,10 @@ SERVER_MODE = True
 # Gemini API setup
 # ------------------------------------------------------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+WORKSPACE_PATH = os.path.dirname(SCRIPT_DIR)
+
 if not GEMINI_API_KEY:
     raise RuntimeError("Gemini API key not configured")
 client = genai.Client(api_key=GEMINI_API_KEY)
@@ -391,8 +395,88 @@ def handle_create_file(path: str, content: str, confirmed: bool = False) -> List
     # For simplicity, we never ask for confirmation; the extension manages it.
     return [create_file_action(path, content)]
 
-def handle_update_file(path: str, content: str, confirmed: bool = False) -> List[dict]:
-    return [create_file_action(path, content)]  # same as create
+
+
+def find_file_recursive(filename, search_path=None):
+    """Search for a file recursively in all subdirectories."""
+    if search_path is None:
+        search_path = WORKSPACE_PATH
+    
+    # First check if file exists at the given path directly
+    if os.path.exists(filename):
+        return filename
+    
+    # Check if it's an absolute path
+    if os.path.isabs(filename):
+        if os.path.exists(filename):
+            return filename
+        return None
+    
+    # Search recursively in all subdirectories
+    for root, dirs, files in os.walk(search_path):
+        # Skip hidden directories and common non-code directories
+        dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['node_modules', '__pycache__', 'venv', 'env', '.git', '.vscode']]
+        
+        if filename in files:
+            return os.path.join(root, filename)
+        
+        # Also check if the full relative path matches
+        full_candidate = os.path.join(root, filename)
+        if os.path.exists(full_candidate):
+            return full_candidate
+    
+    return None
+
+def handle_update_file(path, content, confirmed=False):
+    try:
+        # Try to find the file recursively if not found directly
+        full_path = find_file_recursive(path)
+
+        if not full_path:
+            # Try direct path as fallback
+            full_path = os.path.join(WORKSPACE_PATH, path)
+            if not os.path.exists(full_path):
+                return f"[ERROR] File '{path}' not found in workspace or any subdirectory. Cannot update."
+
+        if not content or not content.strip():
+            return f"[ERROR] No content provided to write to '{full_path}'"
+
+        lines = content.split('\n')
+        result_lines = []
+        result_lines.append(f"[UPDATING] File '{full_path}' ({len(lines)} lines):")
+        
+        # Write content to file
+        try:
+            with open(full_path, "w", encoding='utf-8') as f:
+                for i, line in enumerate(lines, 1):
+                    f.write(line + '\n')
+                    result_lines.append(f"  Line {i}/{len(lines)}: {line[:50]}{'...' if len(line) > 50 else ''}")
+        except IOError as e:
+            return f"[ERROR] Failed to write to file '{full_path}': {e}"
+        
+        # Verify file was written
+        if not os.path.exists(full_path):
+            return f"[ERROR] File write failed - file does not exist after writing"
+        
+        # Check file size
+        file_size = os.path.getsize(full_path)
+        result_lines.append(f"[OK] File '{full_path}' updated successfully ({file_size} bytes).")
+        
+        # Validate Python code if applicable
+        if full_path.endswith('.py'):
+            result_lines.append(f"[VALIDATING] Checking Python code for errors...")
+            error, line_no = validate_python_code(content, full_path)
+            if error:
+                result_lines.append(f"[WARNING] Validation found issues:")
+                result_lines.append(error)
+            else:
+                result_lines.append(f"[OK] Code validation passed - no syntax errors found.")
+        
+        return "\n".join(result_lines)
+                
+    except Exception as e:
+        return f"[ERROR] Unexpected error updating file: {e}"
+
 
 def handle_create_project(folder: str, files: List[dict]) -> List[dict]:
     msgs = []
