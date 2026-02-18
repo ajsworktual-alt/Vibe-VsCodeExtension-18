@@ -1,0 +1,22 @@
+.vscode/
+media/
+/.vscode/
+/media/
+node_modules/
+/node_modules/
+__pycache__/
+/__pycache__/
+/src/
+src/
+out/
+/out/
+
+# Specific Files
+.env
+.env.local
+.env.*
+.vscodeignore
+package-lock.json
+package.json
+SEARCH_AND_DEBUG_FEATURES.md
+tsconfig.json
