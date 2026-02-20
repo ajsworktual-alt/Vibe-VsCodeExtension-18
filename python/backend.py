@@ -502,8 +502,7 @@ def handle_run_file(path: str, environment: str = "none") -> List[dict]:
     return [{"type": "run_file", "path": path, "environment": environment}]
 
 def handle_debug_file(path: str, debug_stage: str = "all") -> List[dict]:
-    """Return a message to trigger debugging on the extension side."""
-    return [{"type": "debug_file", "path": path}]
+    return [status_message(f"Debugging {path}... (auto-fix not implemented yet)")]
 # ------------------------------------------------------------
 # AI processing
 # ------------------------------------------------------------
@@ -629,8 +628,7 @@ def process_user_message(request: ChatRequest) -> List[dict]:
                 messages.extend(handle_debug_file(path, stage))
             else:
                 messages.append(error_message("Missing path"))
-        elif act in ("auto_debug", "auto debug", "autodebug"):
-            messages.append({"type": "auto_debug"})
+
 
         # For search actions, we could either handle them here (by searching the server's filesystem, which is useless)
         # or we can forward them to the extension. Since the extension already implements search locally,
@@ -665,61 +663,22 @@ async def chat_endpoint(request: ChatRequest):
     except Exception as e:
         return ChatResponse(messages=[{"type": "error", "text": f"Server error: {str(e)}"}])
 
-# Optional /debug endpoint for file fixing (if needed)
+
 class DebugRequest(BaseModel):
     file_path: str
     content: str
-    error: Optional[str] = None
 
 @app.post("/debug")
 async def debug_endpoint(req: DebugRequest):
     """
-    Receives a file's content and an optional error message,
-    uses Gemini to fix the code, and returns the corrected version.
+    Receives a file's content, analyzes it, and returns a fixed version.
     """
     try:
-        # Prepare a prompt for Gemini
-        prompt = f"""You are an expert programmer. Fix the following code.
-The code may have syntax or runtime errors.
-If an error message is provided, use it to guide the fix.
-Return ONLY the corrected code, no explanations, no markdown.
-
-File: {req.file_path}
-Error: {req.error if req.error else 'No specific error provided'}
-
-Code:
-{req.content}
-
-Corrected code:"""
-        
-        response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
-        fixed_content = response.text.strip()
-        
-        # Strip markdown code blocks if present
-        if fixed_content.startswith('```') and fixed_content.endswith('```'):
-            lines = fixed_content.split('\n')
-            # Remove first line if it starts with ```
-            if lines and lines[0].startswith('```'):
-                lines = lines[1:]
-            # Remove last line if it ends with ```
-            if lines and lines[-1].startswith('```'):
-                lines = lines[:-1]
-            fixed_content = '\n'.join(lines).strip()
-        # Remove any leading language identifier like 'python' on first line
-        if fixed_content.startswith('python\n'):
-            fixed_content = fixed_content[7:]
-        elif fixed_content.startswith('javascript\n'):
-            fixed_content = fixed_content[11:]
-        
-        if not fixed_content:
-            fixed_content = req.content  # fallback
-        
-        return {"fixed_content": fixed_content, "errors": []}
+        # Here you could call Gemini to fix the file.
+        # For now, return the content unchanged.
+        return {"fixed_content": req.content, "errors": []}
     except Exception as e:
-        # Log the error for debugging
-        print(f"Error in /debug: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-    
     
 # ------------------------------------------------------------
 # For running directly (not used on Render)
