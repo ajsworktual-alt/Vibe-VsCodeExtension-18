@@ -120,11 +120,15 @@ UPDATE FILE (overwrite entire file):
   "content": "<full corrected file content with \\n>"
 }
 
-DEBUG FILE (auto-fix mode):
+DEBUG FILE:
 {
-  "action": "update_file",
-  "path": "<relative_path/file.py>",
-  "content": "<fully corrected file content with \\n>"
+  "action": "debug_file",
+  "path": "<relative_path/file.py>"
+}
+
+AUTO DEBUG (no file specified):
+{
+  "action": "auto_debug"
 }
 
 RUN FILE:
@@ -163,10 +167,7 @@ GET FILE INFO:
   "path": "<relative_path/file.py>"
 }
 
-AUTO DEBUG (no file specified):
-{
-  "action": "auto_debug"
-}
+
 
 OPERATION MODE RULES:
 
@@ -181,25 +182,16 @@ OPERATION MODE RULES:
 
 4. Never mix raw code and JSON.
 5. Never wrap JSON in markdown.
-----------------------------------------
-AUTO-HEALING RULES (When Debugging)
-----------------------------------------
 
-When fixing a file:
 
-- Fix the ENTIRE file.
-- Ensure 100% valid Python syntax.
-- Fix incorrect imports.
-- Fix indentation.
-- Fix logical errors if obvious.
-- Preserve working functionality.
-- Add minimal safe error handling if missing.
-- Return the FULL corrected file.
-- Use \\n for line breaks.
-- Never explain changes.
-- Never return partial code.
-- Never return debug analysis.
-- Return ONLY update_file action.
+----------------------------------------
+IMPORTANT DEBUGGING RULE:
+When the user asks to fix a bug in an existing file, 
+you MUST return a `debug_file` action (with the file path). 
+Do NOT return `update_file` with new content – 
+the extension will handle the actual fixing by running the file 
+and using the /debug endpoint.
+----------------------------------------
 
 ----------------------------------------
 IMPORTANT
@@ -510,14 +502,8 @@ def handle_run_file(path: str, environment: str = "none") -> List[dict]:
     return [{"type": "run_file", "path": path, "environment": environment}]
 
 def handle_debug_file(path: str, debug_stage: str = "all") -> List[dict]:
-    # For debugging, we could either:
-    # 1. Ask the extension to send the file content, then we analyze and return a fixed version.
-    # 2. Or we just return a debug_file message and the extension will handle it.
-    # Here we'll return a message that the extension will interpret to debug (i.e., send file to /debug endpoint later).
-    # But we also need a separate /debug endpoint that accepts file content and returns fixed content.
-    # For now, we'll just return a status that we are debugging (the extension will need to implement it).
-    return [status_message(f"Debugging {path}... (auto-fix not implemented yet)")]
-
+    """Return a message to trigger debugging on the extension side."""
+    return [{"type": "debug_file", "path": path}]
 # ------------------------------------------------------------
 # AI processing
 # ------------------------------------------------------------
@@ -643,6 +629,8 @@ def process_user_message(request: ChatRequest) -> List[dict]:
                 messages.extend(handle_debug_file(path, stage))
             else:
                 messages.append(error_message("Missing path"))
+        elif act in ("auto_debug", "auto debug", "autodebug"):
+            messages.append({"type": "auto_debug"})
 
         # For search actions, we could either handle them here (by searching the server's filesystem, which is useless)
         # or we can forward them to the extension. Since the extension already implements search locally,
